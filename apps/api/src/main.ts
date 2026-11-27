@@ -1,21 +1,20 @@
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from './app.module.js';
+import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
+  app.setGlobalPrefix('api'); // khớp proxy '/api' của Vite
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors();
+  app.enableCors({ origin: ['http://localhost:5173'] });
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Gym System API')
-    .setVersion('1.0')
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  const doc = SwaggerModule.createDocument(
+    app,
+    new DocumentBuilder().setTitle('Gym System API').addBearerAuth().build(),
+  );
+  SwaggerModule.setup('docs', app, doc);
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(3000);
 }
-await bootstrap();
+bootstrap();

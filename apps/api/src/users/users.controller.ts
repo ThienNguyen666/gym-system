@@ -1,34 +1,31 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { UsersService } from './users.service.js';
-import { CreateUserDto } from './dto/create-user.dto.js';
-import { UpdateUserDto } from './dto/update-user.dto.js';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
+import { AuthUser, CurrentUser, Roles } from '../common/decorators';
+import { Role, UserStatus } from '../entities/enums';
+import { UsersService } from './users.service';
 
+class CreateManagerDto {
+  @IsEmail() email: string;
+  @IsString() fullName: string;
+  @IsString() @MinLength(8) password: string;
+}
+class SetStatusDto { @IsEnum(UserStatus) status: UserStatus }
+
+@ApiTags('Users') @ApiBearerAuth()
+@Roles(Role.ADMIN)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private svc: UsersService) {}
 
-  @Post()
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+  @Post('managers') createManager(@Body() d: CreateManagerDto) {
+    return this.svc.createManager(d.email, d.fullName, d.password);
   }
-
-  @Get()
-  findAll() {
-    return this.usersService.findAll();
+  @Get() list(@Query('role') role?: Role, @Query('status') status?: UserStatus) {
+    return this.svc.list(role, status);
   }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(+id, updateUserDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(+id);
+  @Patch(':id/status')
+  setStatus(@Param('id', ParseUUIDPipe) id: string, @Body() d: SetStatusDto, @CurrentUser() me: AuthUser) {
+    return this.svc.setStatus(id, d.status, me.id);
   }
 }
