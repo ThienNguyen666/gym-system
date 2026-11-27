@@ -1,0 +1,21 @@
+{
+  "name": "gym-system",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "db": "docker compose up -d",
+    "dev": "concurrently -n api,web,ai -c blue,green,magenta \"npm --prefix apps/api run start:dev\" \"npm --prefix apps/web run dev\" \"cd apps/ai && .venv\\Scripts\\python -m uvicorn app.main:app --reload --port 8000\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  }
+}
