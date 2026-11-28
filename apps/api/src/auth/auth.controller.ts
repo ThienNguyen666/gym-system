@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { AuthUser, CurrentUser, Public } from '../common/decorators';
+import type { AuthUser } from '../common/decorators';
+import { CurrentUser, Public } from '../common/decorators';
 import { ChangePasswordDto, LoginDto, RefreshDto } from './auth.dto';
 import { AuthService } from './auth.service';
 

@@ -1,7 +1,8 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
-import { AuthUser, CurrentUser, Roles } from '../common/decorators';
+import type { AuthUser } from '../common/decorators';
+import { CurrentUser, Roles } from '../common/decorators';
 import { Role, UserStatus } from '../entities/enums';
 import { UsersService } from './users.service';
 
