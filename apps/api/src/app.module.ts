@@ -1,70 +1,46 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
-import { CommonModule } from './common/common.module.js';
-import { AuthModule } from './auth/auth.module.js';
-import { UsersModule } from './users/users.module.js';
-import { MembersModule } from './members/members.module.js';
-import { TrainersModule } from './trainers/trainers.module.js';
-import { PackagesModule } from './packages/packages.module.js';
-import { ClassesModule } from './classes/classes.module.js';
-import { BookingsModule } from './bookings/bookings.module.js';
-import { WaitlistModule } from './waitlist/waitlist.module.js';
-import { CheckinModule } from './checkin/checkin.module.js';
-import { PaymentsModule } from './payments/payments.module.js';
-import { NoshowModule } from './noshow/noshow.module.js';
-import { ChatbotModule } from './chatbot/chatbot.module.js';
-import { DashboardModule } from './dashboard/dashboard.module.js';
-import { AuditModule } from './audit/audit.module.js';
-import { NotificationsModule } from './notifications/notifications.module.js';
-import { SchedulerModule } from './scheduler/scheduler.module.js';
+import { join } from 'path';
+import { AuditModule } from './audit/audit.module';
+import { AuthModule } from './auth/auth.module';
+import { BookingsModule } from './bookings/bookings.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
+import { CheckinModule } from './checkin/checkin.module';
+import { ClassesModule } from './classes/classes.module';
+import { CommonModule } from './common/common.module';
+import { JwtAuthGuard, RolesGuard } from './common/guards';
+import { buildDbOptions } from './config/db.options';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { MembersModule } from './members/members.module';
+import { NoshowModule } from './noshow/noshow.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { PackagesModule } from './packages/packages.module';
+import { PaymentsModule } from './payments/payments.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
+import { TrainersModule } from './trainers/trainers.module';
+import { UsersModule } from './users/users.module';
+import { WaitlistModule } from './waitlist/waitlist.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: join(process.cwd(), '..', '..', '.env') }),
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        host: config.getOrThrow<string>('DB_HOST'),
-        port: Number(config.get('DB_PORT') ?? 5432),
-        username: config.getOrThrow<string>('DB_USER'),
-        password: config.getOrThrow<string>('DB_PASS'),
-        database: config.getOrThrow<string>('DB_NAME'),
-        entities: [
-          join(
-            dirname(fileURLToPath(import.meta.url)),
-            '**',
-            '*.entity{.ts,.js}',
-          ),
-        ],
-        synchronize: false,
-      }),
+      useFactory: (cfg: ConfigService) =>
+        buildDbOptions({
+          DB_HOST: cfg.get('DB_HOST'), DB_PORT: cfg.get('DB_PORT'),
+          DB_USER: cfg.get('DB_USER'), DB_PASS: cfg.get('DB_PASS'), DB_NAME: cfg.get('DB_NAME'),
+        }),
     }),
-    CommonModule,
-    AuthModule,
-    UsersModule,
-    MembersModule,
-    TrainersModule,
-    PackagesModule,
-    ClassesModule,
-    BookingsModule,
-    WaitlistModule,
-    CheckinModule,
-    PaymentsModule,
-    NoshowModule,
-    ChatbotModule,
-    DashboardModule,
-    AuditModule,
-    NotificationsModule,
-    SchedulerModule,
+    CommonModule, AuthModule, UsersModule, MembersModule, TrainersModule, PackagesModule,
+    ClassesModule, BookingsModule, WaitlistModule, CheckinModule, PaymentsModule, NoshowModule,
+    ChatbotModule, DashboardModule, AuditModule, NotificationsModule, SchedulerModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    { provide: APP_GUARD, useClass: JwtAuthGuard }, // 1. phải đăng nhập (trừ @Public)
+    { provide: APP_GUARD, useClass: RolesGuard },   // 2. rồi mới kiểm tra vai trò
+  ],
 })
 export class AppModule {}
