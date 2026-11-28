@@ -5,10 +5,12 @@ import { toVN } from '../common/date';
 import type { AuthUser } from '../common/decorators';
 import { QR_PREFIX, RULES } from '../common/rules';
 import { Booking } from '../entities/booking.entity';
-import { BookingStatus, ClassStatus, MemberPackageStatus, Role } from '../entities/enums';
+import { BookingStatus, ClassStatus, MemberPackageStatus, Role, UserStatus, WaitlistStatus } from '../entities/enums';
 import { GymClass } from '../entities/gym-class.entity';
 import { MemberPackage } from '../entities/member-package.entity';
 import { MemberProfile } from '../entities/member-profile.entity';
+import { User } from '../entities/user.entity';
+import { WaitlistEntry } from '../entities/waitlist-entry.entity';
 import { ListBookingsQuery } from './bookings.dto';
 
 @Injectable()
@@ -62,6 +64,10 @@ export class BookingsService {
         }
 
         const b = await m.save(Booking, m.create(Booking, { memberId: me.id, classId, memberPackageId: pkg.id }));
+        // 4b: đặt trực tiếp được thì không còn cần giữ chỗ trong hàng chờ của lớp này
+        await m.update(WaitlistEntry,
+          { memberId: me.id, classId, status: WaitlistStatus.WAITING },
+          { status: WaitlistStatus.CANCELLED });
         const after = await m.findOneByOrFail(GymClass, { id: classId });
         return {
           id: b.id, status: b.status, classId, memberPackageId: pkg.id, createdAt: b.createdAt,
@@ -76,8 +82,9 @@ export class BookingsService {
   }
 
   /**
-   * UC-08: hủy lượt đặt. Khóa dòng lớp TRƯỚC (thứ tự lớp -> gói); đây cũng là điểm tuần tự hóa
-   * để bước sau đôn người chờ ngay trong transaction này.
+   * UC-08: hủy lượt đặt + đôn người chờ (BR5), tất cả trong MỘT transaction.
+   * Khóa dòng lớp TRƯỚC (thứ tự lớp -> gói) và giữ đến hết transaction: chỗ vừa nhả
+   * không bao giờ lộ ra cho người đặt mới khi còn người chờ (không chen hàng).
    */
   cancel(id: string, me: AuthUser) {
     return this.ds.transaction(async (m) => {
@@ -101,8 +108,8 @@ export class BookingsService {
       if (!r.affected) throw this.rule('not_confirmed', 'Lượt đặt không còn ở trạng thái đã xác nhận');
 
       await this.release(m, b); // BR3: giải phóng chỗ trong lớp và buổi đang giữ trong gói
-      // TODO bước 4b (BR5): đôn người chờ đầu tiên còn đủ điều kiện, trong CÙNG transaction này
-      return { id, status: BookingStatus.CANCELLED };
+      const promoted = await this.promoteWaitlist(m, cls); // 4b (BR5)
+      return { id, status: BookingStatus.CANCELLED, promoted };
     });
   }
 
@@ -151,6 +158,70 @@ export class BookingsService {
         .where('id = :id AND pending_count > 0', { id: b.memberPackageId }).execute();
       if (!p.affected) throw new Error('Bất biến (I2) bị phá: pending_count đã bằng 0 khi giải phóng chỗ');
     }
+  }
+
+  /**
+   * BR5: đôn người chờ sớm nhất (FIFO) mà còn đủ điều kiện BR2. Mỗi người được thử trong một SAVEPOINT:
+   * không đủ điều kiện thì rollback về savepoint (hoàn tác các cập nhật dở) rồi xét người kế tiếp.
+   * Người bị bỏ qua vẫn giữ nguyên chỗ trong hàng. Trả về true nếu có người được đôn.
+   */
+  private async promoteWaitlist(m: EntityManager, cls: GymClass): Promise<boolean> {
+    const waiting = await m.find(WaitlistEntry, {
+      where: { classId: cls.id, status: WaitlistStatus.WAITING },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+    for (const w of waiting) {
+      await m.query('SAVEPOINT promote_try');
+      let res: 'promoted' | 'skip' | 'full';
+      try {
+        res = await this.tryPromote(m, w, cls);
+      } catch (e: any) {
+        // chỉ nuốt lỗi trùng khóa; lỗi khác phải làm hỏng cả transaction
+        if ((e?.code ?? e?.driverError?.code) !== '23505') throw e;
+        res = 'skip';
+      }
+      if (res !== 'promoted') await m.query('ROLLBACK TO SAVEPOINT promote_try');
+      await m.query('RELEASE SAVEPOINT promote_try');
+      if (res === 'promoted') return true;
+      if (res === 'full') return false;
+    }
+    return false;
+  }
+
+  private async tryPromote(m: EntityManager, w: WaitlistEntry, cls: GymClass): Promise<'promoted' | 'skip' | 'full'> {
+    // BR2(a): tài khoản còn hoạt động
+    if (!(await m.existsBy(User, { id: w.memberId, status: UserStatus.ACTIVE }))) return 'skip';
+    // BR2(b): gói đang hoạt động và còn hiệu lực vào ngày diễn ra lớp
+    const pkg = await m.findOneBy(MemberPackage, { memberId: w.memberId, status: MemberPackageStatus.ACTIVE });
+    if (!pkg) return 'skip';
+    const day = toVN(cls.startTime).date;
+    if (pkg.startDate > day || (pkg.endDate && pkg.endDate < day)) return 'skip';
+    // BR2(c): chưa có lượt đặt xác nhận cho lớp này
+    if (await m.existsBy(Booking, { memberId: w.memberId, classId: cls.id, status: BookingStatus.CONFIRMED })) return 'skip';
+
+    // (I1): P2. Không cập nhật được dòng nào = lớp không nhận thêm được nữa, dừng hẳn
+    const c = await m.createQueryBuilder().update(GymClass)
+      .set({ confirmedCount: () => 'confirmed_count + 1' })
+      .where('id = :id AND status = :st AND start_time > NOW() AND confirmed_count < capacity',
+        { id: cls.id, st: ClassStatus.SCHEDULED })
+      .execute();
+    if (!c.affected) return 'full';
+    // (I2): P2
+    const p = await m.createQueryBuilder().update(MemberPackage)
+      .set({ pendingCount: () => 'pending_count + 1' })
+      .where('id = :id AND status = :st AND (sessions_remaining IS NULL OR pending_count < sessions_remaining)',
+        { id: pkg.id, st: MemberPackageStatus.ACTIVE })
+      .execute();
+    if (!p.affected) return 'skip'; // hết buổi: savepoint rollback sẽ trả lại bộ đếm lớp
+
+    await m.save(Booking, m.create(Booking, { memberId: w.memberId, classId: cls.id, memberPackageId: pkg.id }));
+    const u = await m.createQueryBuilder().update(WaitlistEntry)
+      .set({ status: WaitlistStatus.PROMOTED, promotedAt: () => 'NOW()' })
+      .where('id = :id AND status = :st', { id: w.id, st: WaitlistStatus.WAITING })
+      .execute();
+    if (!u.affected) return 'skip'; // người chờ vừa rời hàng: savepoint rollback hủy luôn các bước trên
+    // TODO (thông báo FR-31): tạo Notification cho người được đôn
+    return 'promoted';
   }
 
   private async explainClassRejection(m: EntityManager, classId: string) {

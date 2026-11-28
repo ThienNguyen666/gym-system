@@ -23,7 +23,7 @@ Trọng tâm kỹ thuật: đặt lớp đồng thời an toàn (bất biến I1
 | Auth (JWT + refresh xoay vòng), RBAC, quản lý tài khoản | ✅ |
 | Members, Packages, Payments | ✅ bước 2 |
 | Trainers, Classes (xung đột lịch) | ✅ |
-| Bookings + Waitlist (chống đặt vượt sức chứa) | ⬜ |
+| Bookings + Waitlist (chống đặt vượt sức chứa) | ✅ |
 | Check-in QR, điểm danh thủ công, scheduler | ⬜ |
 | Dashboard | ⬜ |
 | Dự đoán no-show (luật + logistic regression) | ⬜ |
@@ -116,6 +116,8 @@ Kiểm tra: http://localhost:8000/health trả `{"ok": true}`.
 | `npm run smoke` | Test tự động auth + RBAC |
 | `npm run smoke:members` | Test tự động Members, Packages, Payments |
 | `npm run smoke:classes` | Test tự động Trainers, Classes (xung đột lịch) |
+| `npm run smoke:bookings` | Test tự động Bookings |
+| `npm run smoke:waitlist` | Test tự động Waitlist |
 | `npm --prefix apps/api run build` | Build API |
 | `npm --prefix apps/api run migration:generate -- src/migrations/<Tên>` | Sinh migration sau khi sửa entity |
 
