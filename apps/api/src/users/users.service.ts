@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { Role, UserStatus } from '../entities/enums';
 import { User } from '../entities/user.entity';
 
@@ -19,7 +19,10 @@ export class UsersService {
   }
 
   async list(role?: Role, status?: UserStatus) {
-    const rows = await this.repo.find({ where: { role, status }, order: { createdAt: 'DESC' } });
+    const where: FindOptionsWhere<User> = {};
+    if (role) where.role = role;
+    if (status) where.status = status;
+    const rows = await this.repo.find({ where, order: { createdAt: 'DESC' } });
     return rows.map((u) => this.safe(u));
   }
 

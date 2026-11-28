@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseEnumPipe, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
 import type { AuthUser } from '../common/decorators';
@@ -22,9 +22,13 @@ export class UsersController {
   @Post('managers') createManager(@Body() d: CreateManagerDto) {
     return this.svc.createManager(d.email, d.fullName, d.password);
   }
-  @Get() list(@Query('role') role?: Role, @Query('status') status?: UserStatus) {
+  @Get() list(
+    @Query('role', new ParseEnumPipe(Role, { optional: true })) role?: Role,
+    @Query('status', new ParseEnumPipe(UserStatus, { optional: true })) status?: UserStatus,
+  ) {
     return this.svc.list(role, status);
   }
+  
   @Patch(':id/status')
   setStatus(@Param('id', ParseUUIDPipe) id: string, @Body() d: SetStatusDto, @CurrentUser() me: AuthUser) {
     return this.svc.setStatus(id, d.status, me.id);
