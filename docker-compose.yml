@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: gym_pass
       POSTGRES_DB: gym
     ports:
-      - "5433:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - gym_pgdata:/var/lib/postgresql
     healthcheck:
