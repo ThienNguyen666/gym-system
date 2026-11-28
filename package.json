@@ -15,6 +15,7 @@
     "migrate": "npm --prefix apps/api run migration:run",
     "seed": "npm --prefix apps/api run seed",
     "smoke": "powershell -ExecutionPolicy Bypass -File ./scripts/smoke-auth.ps1",
+    "smoke:members": "powershell -ExecutionPolicy Bypass -File ./scripts/smoke-members.ps1",
     "dev": "concurrently -n api,web,ai -c blue,green,magenta \"npm --prefix apps/api run start:dev\" \"npm --prefix apps/web run dev\" \"cd apps/ai && .venv\\Scripts\\python -m uvicorn app.main:app --reload --port 8000\"",
     "dev:core": "concurrently -n api,web -c blue,green \"npm --prefix apps/api run start:dev\" \"npm --prefix apps/web run dev\""
   },
